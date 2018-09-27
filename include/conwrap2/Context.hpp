@@ -26,6 +26,11 @@ namespace conwrap2
 			Context(ProcessorProxy<ResourceType>& p)
 			: processorProxy(p) {}
 
+			inline auto& getDispatcher()
+			{
+				return processorProxy.getDispatcher();
+			}
+
 			inline auto& getProcessorProxy()
 			{
 				return processorProxy;

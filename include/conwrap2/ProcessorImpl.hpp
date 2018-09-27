@@ -12,12 +12,14 @@
 
 #pragma once
 
+#include <algorithm>
 #include <experimental/net>
 #include <functional>
-#include <memory>
 #include <optional>
 #include <thread>
 #include <type_traits>
+#include <utility>  // std::pair
+#include <vector>
 
 #include <conwrap2/Context.hpp>
 #include <conwrap2/ProcessorProxy.hpp>
@@ -33,6 +35,7 @@ namespace conwrap2
 		class ProcessorImpl
 		{
 			using WorkGuardType = net::executor_work_guard<net::io_context::executor_type>;
+			using TimerType     = net::high_resolution_timer;
 
 			public:
 				ProcessorImpl(ResourceType r)
@@ -50,9 +53,14 @@ namespace conwrap2
 					stop();
 				}
 
+				ProcessorImpl(const ProcessorImpl&) = delete;             // non-copyable
+				ProcessorImpl& operator=(const ProcessorImpl&) = delete;  // non-assignable
+				ProcessorImpl(ProcessorImpl&& rhs) = delete;              // non-movable
+				ProcessorImpl& operator=(ProcessorImpl&& rhs) = delete;   // non-move-assignable
+
 				inline auto& getDispatcher()
 				{
-					return io_context;
+					return dispatcher;
 				}
 
 				inline auto& getResource()
@@ -60,60 +68,103 @@ namespace conwrap2
 					return resource;
 				}
 
-				template<typename Func>
-				inline void process(Func&& handler)
+				template<typename HandlerType>
+				inline void process(HandlerType&& handler)
 				{
-					Context<ResourceType> context{processorProxy};
+					net::post(dispatcher, std::move(wrap(handler)));
+				}
 
-					if constexpr (std::is_invocable<decltype(handler), decltype((context))>::value)
+				template<typename HandlerType, typename DurationType>
+				inline void processWithDelay(HandlerType&& handler, const DurationType& delay)
+				{
+					process(std::move([this, handler{std::move(wrap(handler))}, delay{delay}](auto& context) mutable
 					{
-						net::post(io_context, std::move([handler{std::move(handler)}, context{std::move(context)}]
+						auto& [id, timer]{*timers.emplace(timers.end(), ++currentID, std::move(TimerType{dispatcher, delay}))};
+
+						timer.async_wait(std::move([this, context{context}, handler{std::move(handler)}, id{id}](auto& error) mutable
 						{
-							handler(context);
+							if (!error)
+							{
+								handler();
+							}
+
+							context.getProcessorProxy().process([this, id{id}]() mutable
+							{
+								timers.erase(std::remove_if(timers.begin(), timers.end(), [expiredID{id}](auto& pair)
+								{
+									auto& [id, timer]{pair};
+									return id == expiredID;
+								}));
+							});
 						}));
-					}
-					else
-					{
-						net::post(io_context, std::move(handler));
-					}
+					}));
 				}
 
 				inline void start()
 				{
-					std::lock_guard<std::mutex> lockGuard(threadLock);
+					std::lock_guard<std::mutex> lockGuard{threadLock};
 
 					if (!thread.joinable())
 					{
 						thread = std::thread([&]
 						{
-							io_context.restart();
-							workGuard.emplace(net::make_work_guard(io_context));
-							io_context.run();
+							dispatcher.restart();
+							workGuard.emplace(net::make_work_guard(dispatcher));
+							dispatcher.run();
 						});
 					}
 				}
 
 				inline void stop()
 				{
-					std::lock_guard<std::mutex> lockGuard(threadLock);
+					std::lock_guard<std::mutex> lockGuard{threadLock};
 
 					if (thread.joinable())
 					{
-						// it will make io_context.run() exit as soon as there is no tasks to process
-						workGuard.reset();
+						process([this]
+						{
+							for (auto& [id, timer] : timers)
+							{
+								timer.cancel();
+							}
+
+							// it will make dispatcher.run() exit as soon as there is no tasks to process
+							workGuard.reset();
+						});
 
 						// waiting until processor's thread finsihes
 						thread.join();
 					}
 				}
 
+			protected:
+				template<typename HandlerType>
+				inline auto wrap(HandlerType&& handler)
+				{
+					Context<ResourceType> context{processorProxy};
+
+					if constexpr (std::is_invocable<decltype(handler), decltype((context))>::value)
+					{
+						return std::move([handler{std::move(handler)}, context{std::move(context)}]() mutable
+						{
+							handler(context);
+						});
+					}
+					else
+					{
+						return std::move(handler);
+					}
+				}
+
 			private:
-				ProcessorProxy<ResourceType> processorProxy;
-				ResourceType                 resource;
-				std::thread                  thread;
-				std::mutex                   threadLock;
-				net::io_context              io_context;
-				std::optional<WorkGuardType> workGuard{std::nullopt};
+				ProcessorProxy<ResourceType>                          processorProxy;
+				ResourceType                                          resource;
+				std::thread                                           thread;
+				std::mutex                                            threadLock;
+				net::io_context                                       dispatcher;
+				std::optional<WorkGuardType>                          workGuard{std::nullopt};
+				std::vector<std::pair<unsigned long long, TimerType>> timers;
+				unsigned long long                                    currentID{0};
 		};
 	}
 }

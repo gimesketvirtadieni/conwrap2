@@ -1,42 +1,44 @@
 #include <chrono>
-#include <cstdlib>
-#include <deque>
 #include <iostream>
-#include <string>
-#include <thread>
 
 #include <conwrap2/Processor.hpp>
 
 
-namespace net = std::experimental::net;
-using namespace std::literals::string_literals;
-
-
 struct Temp
 {
-    std::unique_ptr<int> ptr;
-};
+    Temp(const Temp&) = delete;             // non-copyable
+    Temp& operator=(const Temp&) = delete;  // non-assignable
+    Temp(Temp&& rhs) = default;
+    Temp& operator=(Temp&& rhs) = default;
+ };
 
 
 int main()
 {
     auto start_time = std::chrono::high_resolution_clock::now();
     {
-        conwrap2::Processor<Temp> processor
-        {
-            [](auto& processor) -> Temp
-            {
-                return std::move(Temp{});
-            }
-        };
-
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
-
+        conwrap2::Processor<Temp> processor{Temp{}};
+/*
         start_time = std::chrono::high_resolution_clock::now();
         for (int i = 0; i < 1000000; i++)
         {
             processor.process([] {});
         }
+*/
+/*
+        processor.process([ptr = std::make_unique<int>(1)](auto& context)
+        {
+            std::cout << "HERE1" << std::endl;
+            context.getProcessorProxy().process([ptr = std::make_unique<int>(1)](auto& context)
+            {
+                std::cout << "HERE2" << std::endl;
+            });
+        });
+*/
+        processor.processWithDelay([ptr = std::make_unique<int>(1)](auto& context)
+        {
+            std::cout << "HERE" << std::endl;
+        }, std::chrono::seconds{1});
     }
 
     auto end_time = std::chrono::high_resolution_clock::now();

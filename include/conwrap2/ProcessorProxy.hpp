@@ -15,9 +15,6 @@
 
 namespace conwrap2
 {
-	template <typename ResourceType>
-	class ProcessorProxy;
-
 	namespace internal
 	{
 		template <typename ResourceType>
@@ -41,10 +38,16 @@ namespace conwrap2
 				return processorImpl.getResource();
 			}
 
-			template<typename Func>
-			inline void process(Func&& handler)
+			template<typename HandlerType>
+			inline void process(HandlerType&& handler)
 			{
 				processorImpl.process(std::move(handler));
+			}
+
+			template<typename HandlerType, typename DurationType>
+			inline void processWithDelay(HandlerType&& handler, const DurationType& delay)
+			{
+				processorImpl.processAfter(handler, delay);
 			}
 
 		private:

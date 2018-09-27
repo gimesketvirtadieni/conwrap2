@@ -13,6 +13,7 @@
 #pragma once
 
 #include <conwrap2/ProcessorImpl.hpp>
+#include <memory>
 
 
 namespace conwrap2
@@ -22,37 +23,51 @@ namespace conwrap2
 	{
 		public:
 			Processor(ResourceType resource)
-			: processorImpl{std::move(resource)} {}
+			: processorImplPtr{std::make_unique<internal::ProcessorImpl<ResourceType>>(std::move(resource))}
+			{
+				processorImplPtr->start();
+			}
 
 			template <typename CreatorType = std::function<ResourceType(ProcessorProxy<ResourceType>&)>>
 			Processor(CreatorType&& creator)
-			: processorImpl{creator}
+			: processorImplPtr{std::make_unique<internal::ProcessorImpl<ResourceType>>(creator)}
 			{
-				processorImpl.start();
+				processorImplPtr->start();
 			}
 
 			~Processor()
 			{
-				processorImpl.stop();
+				processorImplPtr->stop();
 			}
+
+			Processor(const Processor&) = delete;             // non-copyable
+			Processor& operator=(const Processor&) = delete;  // non-assignable
+			Processor(Processor&& rhs) = default;
+			Processor& operator=(Processor&& rhs) = default;
 
 			inline auto& getDispatcher()
 			{
-				return processorImpl.getDispatcher();
+				return processorImplPtr->getDispatcher();
 			}
 
 			inline auto& getResource()
 			{
-				return processorImpl.getResource();
+				return processorImplPtr->getResource();
 			}
 
-			template<typename Func>
-			inline void process(Func&& handler)
+			template<typename HandlerType>
+			inline void process(HandlerType&& handler)
 			{
-				processorImpl.process(handler);
+				processorImplPtr->process(handler);
+			}
+
+			template<typename HandlerType, typename DurationType>
+			inline void processWithDelay(HandlerType&& handler, const DurationType& delay)
+			{
+				processorImplPtr->processWithDelay(handler, delay);
 			}
 
 		private:
-			internal::ProcessorImpl<ResourceType> processorImpl;
+			std::unique_ptr<internal::ProcessorImpl<ResourceType>> processorImplPtr;
 	};
 }
