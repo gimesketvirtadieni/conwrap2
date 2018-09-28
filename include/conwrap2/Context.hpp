@@ -1,5 +1,5 @@
 /*
- * Copyright 2016, Andrej Kislovskij
+ * Copyright 2018, Andrej Kislovskij
  *
  * This is PUBLIC DOMAIN software so use at your own risk as it comes
  * with no warranties. This code is yours to share, use and modify without
