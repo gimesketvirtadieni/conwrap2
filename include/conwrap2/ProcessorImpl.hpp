@@ -77,27 +77,34 @@ namespace conwrap2
 				template<typename HandlerType, typename DurationType>
 				inline void processWithDelay(HandlerType&& handler, const DurationType& delay)
 				{
-					process(std::move([this, handler{std::move(wrap(handler))}, delay{delay}](auto& context) mutable
+					if (!delay.count())
 					{
-						auto& [id, timer]{*timers.emplace(timers.end(), ++currentID, std::move(TimerType{dispatcher, delay}))};
-
-						timer.async_wait(std::move([this, context{context}, handler{std::move(handler)}, id{id}](auto& error) mutable
+						process(std::move(handler));
+					}
+					else
+					{
+						process(std::move([this, handler{std::move(wrap(handler))}, delay{delay}](auto& context) mutable
 						{
-							if (!error)
-							{
-								handler();
-							}
+							auto& [id, timer]{*timers.emplace(timers.end(), ++currentID, std::move(TimerType{dispatcher, delay}))};
 
-							context.getProcessorProxy().process([this, id{id}]() mutable
+							timer.async_wait(std::move([this, context{context}, handler{std::move(handler)}, id{id}](auto& error) mutable
 							{
-								timers.erase(std::remove_if(timers.begin(), timers.end(), [expiredID{id}](auto& pair)
+								if (!error)
 								{
-									auto& [id, timer]{pair};
-									return id == expiredID;
-								}));
-							});
+									handler();
+								}
+
+								context.getProcessorProxy().process([this, id{id}]() mutable
+								{
+									timers.erase(std::remove_if(timers.begin(), timers.end(), [expiredID{id}](auto& pair)
+									{
+										auto& [id, timer]{pair};
+										return id == expiredID;
+									}));
+								});
+							}));
 						}));
-					}));
+					}
 				}
 
 				inline void start()
