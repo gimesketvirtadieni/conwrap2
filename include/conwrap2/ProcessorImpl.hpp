@@ -23,6 +23,8 @@
 
 #include <conwrap2/Context.hpp>
 #include <conwrap2/ProcessorProxy.hpp>
+#include <conwrap2/Timer.hpp>
+#include <conwrap2/TimerWrapper.hpp>
 
 
 namespace conwrap2
@@ -35,7 +37,6 @@ namespace conwrap2
 		class ProcessorImpl
 		{
 			using WorkGuardType = net::executor_work_guard<net::io_context::executor_type>;
-			using TimerType     = net::high_resolution_timer;
 
 			public:
 				ProcessorImpl(ResourceType r)
@@ -75,36 +76,36 @@ namespace conwrap2
 				}
 
 				template<typename HandlerType, typename DurationType>
-				inline void processWithDelay(HandlerType&& handler, const DurationType& delay)
+				inline auto& processWithDelay(HandlerType&& handler, const DurationType& delay)
 				{
-					if (!delay.count())
+					TimerWrapper timerWrapper{Timer{dispatcher, delay}};
+					auto&        timer{timerWrapper.getTimer()};
+
+					process(std::move([this, handler{std::move(wrap(handler))}, timerWrapper{std::move(timerWrapper)}](auto& context) mutable
 					{
-						process(std::move(handler));
-					}
-					else
-					{
-						process(std::move([this, handler{std::move(wrap(handler))}, delay{delay}](auto& context) mutable
+						auto& entry{*timers.emplace(timers.end(), ++currentTimerID, std::move(timerWrapper))};
+						auto& id{entry.first};
+						auto& timerWrapper{entry.second};
+
+						timerWrapper.getTimer().async_wait(std::move([this, context{context}, handler{std::move(handler)}, id{id}](auto& error) mutable
 						{
-							auto& [id, timer]{*timers.emplace(timers.end(), ++currentID, std::move(TimerType{dispatcher, delay}))};
-
-							timer.async_wait(std::move([this, context{context}, handler{std::move(handler)}, id{id}](auto& error) mutable
+							if (!error)
 							{
-								if (!error)
-								{
-									handler();
-								}
+								handler();
+							}
 
-								context.getProcessorProxy().process([this, id{id}]() mutable
+							context.getProcessorProxy().process([this, id{id}]() mutable
+							{
+								timers.erase(std::remove_if(timers.begin(), timers.end(), [expiredID{id}](auto& pair)
 								{
-									timers.erase(std::remove_if(timers.begin(), timers.end(), [expiredID{id}](auto& pair)
-									{
-										auto& [id, timer]{pair};
-										return id == expiredID;
-									}));
-								});
-							}));
+									auto& [id, timer]{pair};
+									return id == expiredID;
+								}));
+							});
 						}));
-					}
+					}));
+
+					return timer;
 				}
 
 				inline void start()
@@ -130,9 +131,9 @@ namespace conwrap2
 					{
 						process([this]
 						{
-							for (auto& [id, timer] : timers)
+							for (auto& [id, timerWrapper] : timers)
 							{
-								timer.cancel();
+								timerWrapper.getTimer().cancel();
 							}
 
 							// it will make dispatcher.run() exit as soon as there is no tasks to process
@@ -164,14 +165,14 @@ namespace conwrap2
 				}
 
 			private:
-				ProcessorProxy<ResourceType>                          processorProxy;
-				ResourceType                                          resource;
-				std::thread                                           thread;
-				std::mutex                                            threadLock;
-				net::io_context                                       dispatcher;
-				std::optional<WorkGuardType>                          workGuard{std::nullopt};
-				std::vector<std::pair<unsigned long long, TimerType>> timers;
-				unsigned long long                                    currentID{0};
+				ProcessorProxy<ResourceType>                             processorProxy;
+				ResourceType                                             resource;
+				std::thread                                              thread;
+				std::mutex                                               threadLock;
+				net::io_context                                          dispatcher;
+				std::optional<WorkGuardType>                             workGuard{std::nullopt};
+				std::vector<std::pair<unsigned long long, TimerWrapper>> timers;
+				unsigned long long                                       currentTimerID{0};
 		};
 	}
 }

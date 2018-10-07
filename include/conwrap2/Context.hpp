@@ -24,7 +24,7 @@ namespace conwrap2
 	{
 		public:
 			Context(ProcessorProxy<ResourceType>& p)
-			: processorProxy(p) {}
+			: processorProxy{p} {}
 
 			inline auto& getDispatcher()
 			{

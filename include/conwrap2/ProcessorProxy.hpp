@@ -45,9 +45,9 @@ namespace conwrap2
 			}
 
 			template<typename HandlerType, typename DurationType>
-			inline void processWithDelay(HandlerType&& handler, const DurationType& delay)
+			inline auto& processWithDelay(HandlerType&& handler, const DurationType& delay)
 			{
-				processorImpl.processWithDelay(handler, delay);
+				return processorImpl.processWithDelay(handler, delay);
 			}
 
 		private:
