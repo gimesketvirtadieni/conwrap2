@@ -98,8 +98,8 @@ namespace conwrap2
 							{
 								timers.erase(std::remove_if(timers.begin(), timers.end(), [expiredID{id}](auto& pair)
 								{
-									auto& [id, timer]{pair};
-									return id == expiredID;
+									// should be replaced by something like auto& [id, std::ignore]{pair} once C++ has support for that
+									return pair.first == expiredID;
 								}));
 							});
 						}));
@@ -131,16 +131,17 @@ namespace conwrap2
 					{
 						process([this]
 						{
-							for (auto& [id, timerWrapper] : timers)
+							// should be replaced by something like auto& [std::ignore, timerWrapper] once C++ has support for that
+							for (auto& pair : timers)
 							{
-								timerWrapper.getTimer().cancel();
+								pair.second.getTimer().cancel();
 							}
 
 							// it will make dispatcher.run() exit as soon as there is no tasks to process
 							workGuard.reset();
 						});
 
-						// waiting until processor's thread finsihes
+						// waiting until processor's thread finishes
 						thread.join();
 					}
 				}
