@@ -40,14 +40,14 @@ namespace conwrap2
 				processorImplPtr->stop();
 			}
 
-			Processor(const Processor&) = delete;             // non-copyable
-			Processor& operator=(const Processor&) = delete;  // non-assignable
-			Processor(Processor&& rhs) = default;
-			Processor& operator=(Processor&& rhs) = default;
-
 			inline auto& getDispatcher()
 			{
 				return processorImplPtr->getDispatcher();
+			}
+
+			inline auto getProcessorProxy()
+			{
+				return processorImplPtr->getProcessorProxy();
 			}
 
 			inline auto& getResource()

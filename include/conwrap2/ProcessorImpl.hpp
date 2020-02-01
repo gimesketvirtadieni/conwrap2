@@ -64,6 +64,11 @@ namespace conwrap2
 					return dispatcher;
 				}
 
+				inline auto getProcessorProxy()
+				{
+					return processorProxy;
+				}
+
 				inline auto& getResource()
 				{
 					return resource;
